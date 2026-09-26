@@ -51,3 +51,29 @@ class ReleaseNotesForge:
         lines.append("---")
         lines.append("Automated release notes synthesized by `tool-release-forge`.")
         return "\n".join(lines) + "\n"
+
+    def forge_discussion_announcement(self, tag: str, commits: List[CommitItem], project_name: str = "", checksums: Optional[dict] = None) -> str:
+        name = project_name or "Project"
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        lines = [
+            f"# 🎉 Announcing {name} {tag} ({now_str})",
+            "",
+            f"We are excited to announce the release of **{name} {tag}**!",
+            "",
+            "### 🌟 Highlights & Changelog",
+            "",
+            self.forge_markdown(tag, commits, project_name=name),
+            "### 🔒 Cryptographic Verification",
+            "Verify downloaded release artifacts using the official SHA-256 checksums:"
+        ]
+        if checksums:
+            lines.append("| Asset | SHA-256 Checksum |")
+            lines.append("| :--- | :--- |")
+            for asset, sha in checksums.items():
+                lines.append(f"| `{asset}` | `{sha}` |")
+        else:
+            lines.append("See attached `SHA256SUMS.txt` in GitHub Releases.")
+        lines.append("")
+        lines.append("### 💬 Community Feedback")
+        lines.append("Let us know what you think in the comments below or report any issues in the repository tracker!")
+        return "\n".join(lines) + "\n"

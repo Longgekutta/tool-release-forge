@@ -77,5 +77,36 @@ class TestReleaseForgeOffline(unittest.TestCase):
         self.assertIn("gh release create v2.0.0", plan.command_str)
         self.assertIn("-F \"dist/NOTES.md\"", plan.command_str)
 
+    def test_05_release_config_generator(self):
+        from core.release_config_generator import write_release_yml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            cfg_file = write_release_yml(tmp)
+            self.assertTrue(cfg_file.is_file())
+            content = cfg_file.read_text(encoding="utf-8")
+            self.assertIn("changelog:", content)
+            self.assertIn("categories:", content)
+            self.assertIn("Breaking Changes", content)
+            self.assertIn("dependabot[bot]", content)
+
+    def test_06_publisher_draft_prerelease_discussion(self):
+        publisher = ReleasePublisher()
+        notes = Path("dist/NOTES.md")
+        assets = [Path("dist/app.tar.gz")]
+        plan = publisher.create_plan(
+            "v3.0.0-rc1",
+            notes,
+            assets,
+            draft=True,
+            prerelease=True,
+            discussion_category="Announcements"
+        )
+        self.assertTrue(plan.draft)
+        self.assertTrue(plan.prerelease)
+        self.assertEqual(plan.discussion_category, "Announcements")
+        self.assertIn("--draft", plan.command_str)
+        self.assertIn("--prerelease", plan.command_str)
+        self.assertIn("--discussion-category \"Announcements\"", plan.command_str)
+
 if __name__ == "__main__":
     unittest.main()

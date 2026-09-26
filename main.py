@@ -14,6 +14,7 @@ from core.commit_analyzer import extract_git_commits, categorize_commit
 from core.changelog_forge import ReleaseNotesForge
 from core.packager import ReleasePackager
 from core.publisher import ReleasePublisher
+from core.release_config_generator import write_release_yml
 
 DEFAULT_TIMEOUT_SECONDS = 30
 timeout=DEFAULT_TIMEOUT_SECONDS
@@ -102,7 +103,14 @@ def forge_cmd(args) -> int:
     # 3. Publish plan
     publisher = ReleasePublisher()
     all_assets = bundle.archives + [bundle.checksum_file]
-    plan = publisher.create_plan(tag, notes_file, all_assets)
+    plan = publisher.create_plan(
+        tag,
+        notes_file,
+        all_assets,
+        draft=getattr(args, "draft", False),
+        prerelease=getattr(args, "prerelease", False),
+        discussion_category=getattr(args, "discussion", None)
+    )
     print(f"\n[★] GitHub CLI Ready Execution Command:")
     print(f"    {plan.command_str}\n")
 
@@ -131,6 +139,29 @@ def notes_cmd(args) -> int:
         print(notes)
     return 0
 
+def config_cmd(args) -> int:
+    target_dir = Path(args.target).resolve()
+    out_file = write_release_yml(target_dir)
+    print(f"[✔] Generated GitHub native release configuration to:\n    {out_file}")
+    return 0
+
+def announce_cmd(args) -> int:
+    target_dir = Path(args.target).resolve()
+    commits = extract_git_commits(target_dir, from_ref=args.from_tag, to_ref=args.to_tag)
+    forge = ReleaseNotesForge()
+    announcement = forge.forge_discussion_announcement(
+        args.tag,
+        commits,
+        project_name=args.name or target_dir.name
+    )
+    if args.out:
+        out_file = Path(args.out).resolve()
+        out_file.write_text(announcement, encoding="utf-8")
+        print(f"[✔] GitHub Discussions announcement draft saved to:\n    {out_file}")
+    else:
+        print(announcement)
+    return 0
+
 def run_cmd(args) -> int:
     args.tag = "v0.1.0"
     args.name = None
@@ -138,6 +169,9 @@ def run_cmd(args) -> int:
     args.from_tag = None
     args.to_tag = "HEAD"
     args.publish = False
+    args.draft = False
+    args.prerelease = False
+    args.discussion = None
     return forge_cmd(args)
 
 def main() -> int:
@@ -172,6 +206,9 @@ def main() -> int:
     p_forge.add_argument("--out", default="dist", help="Output directory for archives and notes")
     p_forge.add_argument("--from-tag", default=None, help="Git starting ref/tag")
     p_forge.add_argument("--to-tag", default="HEAD", help="Git ending ref/tag")
+    p_forge.add_argument("--draft", action="store_true", help="Create release as draft")
+    p_forge.add_argument("--prerelease", action="store_true", help="Mark release as a prerelease")
+    p_forge.add_argument("--discussion", default=None, help="Discussions category for release announcement")
     p_forge.add_argument("--publish", action="store_true", help="Execute 'gh release create' directly")
     p_forge.set_defaults(func=forge_cmd)
 
@@ -182,6 +219,19 @@ def main() -> int:
     p_notes.add_argument("--to-tag", default="HEAD", help="Git ending ref/tag")
     p_notes.add_argument("--out", default=None, help="Output file path")
     p_notes.set_defaults(func=notes_cmd)
+
+    p_config = subparsers.add_parser("config", help="Generate native GitHub .github/release.yml configuration")
+    p_config.add_argument("--target", default=".", help="Target project root directory")
+    p_config.set_defaults(func=config_cmd)
+
+    p_announce = subparsers.add_parser("announce", help="Synthesize GitHub Discussions announcement draft")
+    p_announce.add_argument("--target", default=".", help="Target project root directory")
+    p_announce.add_argument("--tag", default="v1.0.0", help="Release tag version")
+    p_announce.add_argument("--name", default=None, help="Custom project display name")
+    p_announce.add_argument("--from-tag", default=None, help="Git starting ref/tag")
+    p_announce.add_argument("--to-tag", default="HEAD", help="Git ending ref/tag")
+    p_announce.add_argument("--out", default=None, help="Output markdown file path")
+    p_announce.set_defaults(func=announce_cmd)
 
     parsed = parser.parse_args()
     return parsed.func(parsed)
